@@ -107,6 +107,7 @@ Open a new terminal afterward. This removes the wrapper integration and managed 
 python3 -m unittest discover -s tests -v
 python3 -m compileall -q vpnctl.py install.py container
 docker build -t kubectl-vpn:local container
+RUN_DOCKER_TESTS=1 python3 -m unittest discover -s tests -v
 ```
 
 Tests cover configuration selection, argument handling, proxy restrictions, and container ownership checks. Live connectivity and streaming checks require your own VPN and Kubernetes environment:

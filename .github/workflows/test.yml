@@ -22,3 +22,4 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: docker build -t kubectl-vpn:test container
+      - run: RUN_DOCKER_TESTS=1 VPN_TEST_IMAGE=kubectl-vpn:test python3 -m unittest discover -s tests -p test_container_hooks.py -v

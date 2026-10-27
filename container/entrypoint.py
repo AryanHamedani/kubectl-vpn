@@ -24,7 +24,7 @@ Path('/tmp/up.sh').write_text('#!/bin/sh\ntouch /tmp/vpn-ready\n')
 Path('/tmp/down.sh').write_text('#!/bin/sh\nrm -f /tmp/vpn-ready\n')
 for file in ['up.sh','down.sh']: Path('/tmp/'+file).chmod(0o700)
 vpn=subprocess.Popen(['openvpn','--config','/secrets/client.ovpn','--script-security','2',
-                      '--up','/tmp/up.sh','--up-delay','--up-restart','--down','/tmp/down.sh','--down-pre'])
+                      '--up','/bin/sh /tmp/up.sh','--up-delay','--up-restart','--down','/bin/sh /tmp/down.sh','--down-pre'])
 proxy=subprocess.Popen(['python3','/app/proxy.py'])
 def stop(*_):
     ready.unlink(missing_ok=True)
