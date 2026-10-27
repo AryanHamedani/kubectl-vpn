@@ -18,7 +18,12 @@ class ConfigurationTests(unittest.TestCase):
         self.assertIn('auth-user-pass /secrets/auth.txt', result)
         self.assertEqual(remotes, [['1.1.1.1', 8443]])
     def test_unsupported_profile_fails_explicitly(self):
-        with self.assertRaises(ValueError): self.module.prepare_profile('proto tcp-client\nremote 1.1.1.1 443\n')
+        with self.assertRaises(ValueError): self.module.prepare_profile('proto tcp-server\nremote 1.1.1.1 443\n')
+    def test_tcp_client_profile_is_supported(self):
+        result,remotes=self.module.prepare_profile('client\nproto tcp-client\nremote 1.1.1.1 443\n')
+        self.assertIn('proto tcp-client',result)
+        self.assertEqual(remotes,[['1.1.1.1',443]])
+
     def test_cluster_match_is_exact(self):
         self.assertTrue(self.module.protected_server('https://api.example:443', 'api.example'))
         self.assertFalse(self.module.protected_server('https://api.example.evil', 'api.example'))

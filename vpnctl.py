@@ -37,8 +37,8 @@ def prepare_profile(source):
             continue
         if not s or s.startswith(('#',';')): continue
         fields = shlex.split(s)
-        if fields[0] == 'proto' and fields[1] != 'udp':
-            raise ValueError('This setup supports UDP OpenVPN profiles only.')
+        if fields[0] == 'proto' and fields[1] not in {'udp', 'tcp-client'}:
+            raise ValueError('This setup supports UDP or TCP-client OpenVPN profiles only.')
         if fields[0] == 'remote':
             addr = ipaddress.IPv4Address(fields[1])
             if not addr.is_global: continue
@@ -47,7 +47,7 @@ def prepare_profile(source):
             remotes.append([str(addr), port])
             result.append(f'remote {addr} {port}')
         elif fields[0] in allowed: result.append(s)
-    if block or not remotes: raise ValueError('Profile needs complete inline keys and a public IPv4 UDP remote.')
+    if block or not remotes: raise ValueError('Profile needs complete inline keys and a public IPv4 remote.')
     result.extend(['dev tun0','nobind','redirect-gateway def1','auth-user-pass /secrets/auth.txt',
                    'auth-nocache','auth-retry nointeract','connect-retry-max 2','server-poll-timeout 10',
                    'data-ciphers AES-256-GCM:AES-128-GCM:AES-256-CBC','data-ciphers-fallback AES-256-CBC',

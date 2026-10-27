@@ -12,8 +12,14 @@ rule('-P','OUTPUT','DROP')
 rule('-A','OUTPUT','-o','lo','-j','ACCEPT')
 rule('-A','OUTPUT','-o','tun0','-j','ACCEPT')
 rule('-A','OUTPUT','-o','eth0','-p','tcp','--sport','8080','-m','conntrack','--ctstate','ESTABLISHED','-j','ACCEPT')
+profile=Path('/secrets/client.ovpn').read_text()
+protocol='udp'
+for line in profile.splitlines():
+    fields=line.split()
+    if fields and fields[0]=='proto':
+        protocol={'udp':'udp','tcp-client':'tcp'}[fields[1]]
 for host,port in json.loads(Path('/secrets/remotes.json').read_text()):
-    rule('-A','OUTPUT','-o','eth0','-p','udp','-d',host,'--dport',str(port),'-j','ACCEPT')
+    rule('-A','OUTPUT','-o','eth0','-p',protocol,'-d',host,'--dport',str(port),'-j','ACCEPT')
 # Pin VPN endpoints to the original gateway; reconnects cannot recurse into tun0.
 gateway=subprocess.check_output(['ip','-4','route','show','default'],text=True).split()[2]
 for host,port in json.loads(Path('/secrets/remotes.json').read_text()):

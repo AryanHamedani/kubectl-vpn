@@ -14,10 +14,10 @@ other applications → existing host network or VPN
 - Linux with Docker Engine 28 or newer, permission to use Docker, and `/dev/net/tun`.
 - Python 3.10 or newer, `kubectl`, and zsh.
 - An HTTPS Kubernetes API on port 443.
-- A self-contained OpenVPN UDP profile with inline certificates/keys and at least one public IPv4 endpoint.
+- A self-contained OpenVPN UDP or TCP-client profile with inline certificates/keys and at least one public IPv4 endpoint.
 - A VPN username and password.
 
-The initial release supports one protected API hostname and one VPN profile. TCP profiles, hostname-based VPN endpoints, custom API ports, external certificate files, and interactive MFA are not supported. Profiles using additional OpenVPN options may need adaptation. The runtime profile imports a limited option set, omits external scripts and private-address remotes, and adds AES-256-CBC compatibility for older servers.
+The initial release supports one protected API hostname and one VPN profile. Hostname-based VPN endpoints, custom API ports, external certificate files, and interactive MFA are not supported. Profiles using additional OpenVPN options may need adaptation. The runtime profile imports a limited option set, omits external scripts and private-address remotes, and adds AES-256-CBC compatibility for older servers.
 
 ## Install
 
@@ -70,7 +70,7 @@ kubectl-vpn login  # replace saved credentials and reconnect
 - OpenVPN changes routes inside the container's network namespace. The tool does not modify host routes or host firewall rules.
 - The proxy is published only at `127.0.0.1:18080`. It accepts HTTP CONNECT only to the configured API hostname on port 443.
 - Kubernetes TLS remains end to end. The container does not receive kubeconfig or Kubernetes credentials.
-- Container egress permits VPN endpoint UDP traffic, tunnel traffic, and replies from the proxy. Proxy upstream sockets are additionally bound to `tun0`; IPv6 is disabled in the container.
+- Container egress permits VPN endpoint traffic using the profile’s UDP or TCP transport, tunnel traffic, and replies from the proxy. Proxy upstream sockets are additionally bound to `tun0`; IPv6 is disabled in the container.
 - Protected invocations replace HTTP proxy environment variables and clear `NO_PROXY`. A conflicting kubeconfig `proxy-url` causes an error.
 - If the VPN fails, protected API traffic has no direct fallback. The container uses `NET_ADMIN` and the TUN device, not host networking or Docker's privileged mode.
 - DNS for the API uses `1.1.1.1` through the VPN. API hostnames requiring private DNS are not supported by this initial release.
