@@ -49,7 +49,7 @@ def prepare_profile(source):
         elif fields[0] in allowed: result.append(s)
     if block or not remotes: raise ValueError('Profile needs complete inline keys and a public IPv4 remote.')
     result.extend(['dev tun0','nobind','redirect-gateway def1','auth-user-pass /secrets/auth.txt',
-                   'auth-nocache','auth-retry nointeract','connect-retry-max 2','server-poll-timeout 10',
+                   'auth-nocache','auth-retry none','connect-retry-max 2','server-poll-timeout 10',
                    'data-ciphers AES-256-GCM:AES-128-GCM:AES-256-CBC','data-ciphers-fallback AES-256-CBC',
                    'pull-filter ignore "dhcp-option"','pull-filter ignore "route-ipv6"',
                    'pull-filter ignore "ifconfig-ipv6"','verb 3'])
@@ -103,7 +103,7 @@ def start():
         fcntl.flock(lock, fcntl.LOCK_EX)
         obj = managed_container()
         if obj is None:
-            run(['docker','run','-d','--name',NAME,'--label','kubectl-vpn.managed=true',
+            run(['docker','run','-d','--name',NAME,'--restart','unless-stopped','--label','kubectl-vpn.managed=true',
                  '--cap-add=NET_ADMIN','--device=/dev/net/tun','--sysctl=net.ipv6.conf.all.disable_ipv6=1',
                  '--dns=1.1.1.1','--publish',f'127.0.0.1:{PORT}:8080',
                  '--mount',f'type=bind,src={CONFIG},dst=/secrets,readonly',
@@ -115,6 +115,8 @@ def start():
         for _ in range(60):
             state = subprocess.run(['docker','exec',NAME,'test','-f','/tmp/vpn-ready'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
             if state.returncode == 0: return
+            rejected = subprocess.run(['docker','exec',NAME,'test','-f','/tmp/auth-failed'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+            if rejected.returncode == 0: raise RuntimeError('VPN rejected the saved credentials. Run kubectl-vpn login.')
             time.sleep(1)
         raise RuntimeError('VPN did not connect in 60 seconds. Run kubectl-vpn logs. No direct Kubernetes fallback was used.')
 

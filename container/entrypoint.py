@@ -4,6 +4,7 @@ from pathlib import Path
 import signal
 import subprocess
 import sys
+import threading
 import time
 
 def rule(*args): subprocess.run(['iptables','-w',*args],check=True)
@@ -30,7 +31,15 @@ Path('/tmp/up.sh').write_text('#!/bin/sh\ntouch /tmp/vpn-ready\n')
 Path('/tmp/down.sh').write_text('#!/bin/sh\nrm -f /tmp/vpn-ready\n')
 for file in ['up.sh','down.sh']: Path('/tmp/'+file).chmod(0o700)
 vpn=subprocess.Popen(['openvpn','--config','/secrets/client.ovpn','--script-security','2',
-                      '--up','/bin/sh /tmp/up.sh','--up-delay','--up-restart','--down','/bin/sh /tmp/down.sh','--down-pre'])
+                      '--up','/bin/sh /tmp/up.sh','--up-delay','--up-restart','--down','/bin/sh /tmp/down.sh','--down-pre'],
+                     stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True)
+auth_failed=Path('/tmp/auth-failed')
+def forward():
+    for line in vpn.stdout:
+        sys.stdout.write(line); sys.stdout.flush()
+        if 'AUTH_FAILED' in line: auth_failed.touch()
+reader=threading.Thread(target=forward,daemon=True)
+reader.start()
 proxy=subprocess.Popen(['python3','/app/proxy.py'])
 def stop(*_):
     ready.unlink(missing_ok=True)
@@ -39,4 +48,9 @@ def stop(*_):
 signal.signal(signal.SIGTERM,stop)
 signal.signal(signal.SIGINT,stop)
 while vpn.poll() is None and proxy.poll() is None: time.sleep(0.5)
+reader.join(2)
+if auth_failed.exists():
+    # Stay up without retrying: a restart policy re-sending rejected credentials can lock the VPN account.
+    proxy.terminate()
+    signal.pause()
 stop()
