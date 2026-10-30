@@ -115,6 +115,8 @@ def start():
         for _ in range(60):
             state = subprocess.run(['docker','exec',NAME,'test','-f','/tmp/vpn-ready'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
             if state.returncode == 0: return
+            rejected = subprocess.run(['docker','exec',NAME,'test','-f','/tmp/auth-failed'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+            if rejected.returncode == 0: raise RuntimeError('VPN rejected the saved credentials. Run kubectl-vpn login.')
             time.sleep(1)
         raise RuntimeError('VPN did not connect in 60 seconds. Run kubectl-vpn logs. No direct Kubernetes fallback was used.')
 

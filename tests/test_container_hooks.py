@@ -3,6 +3,7 @@ import os
 from pathlib import Path
 import subprocess
 import tempfile
+import time
 import unittest
 
 @unittest.skipUnless(os.environ.get('RUN_DOCKER_TESTS') == '1', 'Set RUN_DOCKER_TESTS=1 to run Docker integration checks')
@@ -32,3 +33,25 @@ print('HOOKS_OK',flush=True)
                 capture_output=True,text=True,timeout=30)
             self.assertEqual(result.returncode,0,result.stderr)
             self.assertIn('HOOKS_OK',result.stdout,result.stdout+result.stderr)
+
+    def test_rejected_credentials_are_not_retried(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory)
+            (root/'client.ovpn').write_text('proto udp\n')
+            (root/'remotes.json').write_text('[["203.0.113.1",1194]]')
+            stub=root/'openvpn'
+            stub.write_text('#!/bin/sh\necho "AUTH: Received control message: AUTH_FAILED"\nexit 1\n')
+            stub.chmod(0o755)
+            name='kubectl-vpn-auth-test'
+            subprocess.run(['docker','rm','-f',name],capture_output=True)
+            subprocess.run(['docker','run','-d','--name',name,'--restart','unless-stopped','--cap-add=NET_ADMIN',
+                '--read-only','--tmpfs','/tmp:noexec','--mount',f'type=bind,src={root},dst=/secrets,readonly',
+                '--mount',f'type=bind,src={stub},dst=/usr/sbin/openvpn,readonly',
+                '--env','API_HOST=api.example',os.environ.get('VPN_TEST_IMAGE','kubectl-vpn:local')],check=True,capture_output=True)
+            try:
+                time.sleep(4)
+                state=subprocess.check_output(['docker','inspect',name,'--format','{{.State.Running}} {{.RestartCount}}'],text=True).split()
+                self.assertEqual(state,['true','0'])
+                self.assertEqual(subprocess.run(['docker','exec',name,'test','-f','/tmp/auth-failed']).returncode,0)
+            finally:
+                subprocess.run(['docker','rm','-f',name],capture_output=True)

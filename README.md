@@ -55,7 +55,7 @@ kubectl port-forward service/SERVICE 8080:80
 kubectl apply -f ./manifest.yaml
 ```
 
-These commands retain their usual Kubernetes semantics. The container stays running between commands. Docker restarts it after a crash or reboot (restart policy `unless-stopped`), and the wrapper starts it on demand otherwise. `kubectl-vpn stop` keeps it stopped until the next start. Select a different context with `kubectl config use-context`, or pass `--context`, `--kubeconfig`, `--cluster`, or `--server` per invocation. Only the installed HTTPS API hostname on port 443 uses this tunnel. Help, completion, and local configuration commands do not require a VPN.
+These commands retain their usual Kubernetes semantics. The container stays running between commands. Docker restarts it after a crash or reboot (restart policy `unless-stopped`), and the wrapper starts it on demand otherwise. `kubectl-vpn stop` keeps it stopped until the next start. If the VPN rejects the saved credentials, the container stays up without retrying (repeated attempts can lock the account) and `kubectl` asks you to run `kubectl-vpn login`. Select a different context with `kubectl config use-context`, or pass `--context`, `--kubeconfig`, `--cluster`, or `--server` per invocation. Only the installed HTTPS API hostname on port 443 uses this tunnel. Help, completion, and local configuration commands do not require a VPN.
 
 ```sh
 kubectl-vpn status
