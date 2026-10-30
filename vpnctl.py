@@ -103,7 +103,7 @@ def start():
         fcntl.flock(lock, fcntl.LOCK_EX)
         obj = managed_container()
         if obj is None:
-            run(['docker','run','-d','--name',NAME,'--label','kubectl-vpn.managed=true',
+            run(['docker','run','-d','--name',NAME,'--restart','unless-stopped','--label','kubectl-vpn.managed=true',
                  '--cap-add=NET_ADMIN','--device=/dev/net/tun','--sysctl=net.ipv6.conf.all.disable_ipv6=1',
                  '--dns=1.1.1.1','--publish',f'127.0.0.1:{PORT}:8080',
                  '--mount',f'type=bind,src={CONFIG},dst=/secrets,readonly',

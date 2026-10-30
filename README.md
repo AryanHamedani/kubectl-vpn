@@ -30,7 +30,7 @@ kubectl config use-context YOUR_CONTEXT
 python3 install.py --profile /path/to/vpn.ovpn
 ```
 
-The installer builds the container image, stores private configuration outside the checkout, and adds a managed function to `.zshrc` with a backup. The function takes precedence over PATH changes made by version managers. The original kubectl binary and kubeconfig are preserved.
+The installer builds the container image, stores private configuration outside the checkout, and adds a managed function to `.zshrc` with a backup. The function takes precedence over PATH changes made by version managers. The original kubectl binary is preserved; the only kubeconfig change is a `proxy-url` on the protected cluster.
 
 Open a new terminal, then run:
 
@@ -55,7 +55,7 @@ kubectl port-forward service/SERVICE 8080:80
 kubectl apply -f ./manifest.yaml
 ```
 
-These commands retain their usual Kubernetes semantics. The container stays running between commands and starts on demand after reboot. Select a different context with `kubectl config use-context`, or pass `--context`, `--kubeconfig`, `--cluster`, or `--server` per invocation. Only the installed HTTPS API hostname on port 443 uses this tunnel. Help, completion, and local configuration commands do not require a VPN.
+These commands retain their usual Kubernetes semantics. The container stays running between commands. Docker restarts it after a crash or reboot (restart policy `unless-stopped`), and the wrapper starts it on demand otherwise. `kubectl-vpn stop` keeps it stopped until the next start. Select a different context with `kubectl config use-context`, or pass `--context`, `--kubeconfig`, `--cluster`, or `--server` per invocation. Only the installed HTTPS API hostname on port 443 uses this tunnel. Help, completion, and local configuration commands do not require a VPN.
 
 ```sh
 kubectl-vpn status
@@ -71,13 +71,13 @@ kubectl-vpn login  # replace saved credentials and reconnect
 - The proxy is published only at `127.0.0.1:18080`. It accepts HTTP CONNECT only to the configured API hostname on port 443.
 - Kubernetes TLS remains end to end. The container does not receive kubeconfig or Kubernetes credentials.
 - Container egress permits VPN endpoint traffic using the profile’s UDP or TCP transport, tunnel traffic, and replies from the proxy. Proxy upstream sockets are additionally bound to `tun0`; IPv6 is disabled in the container.
-- Protected invocations replace HTTP proxy environment variables and clear `NO_PROXY`. A conflicting kubeconfig `proxy-url` causes an error.
+- The installer sets the protected cluster's kubeconfig `proxy-url` to `http://127.0.0.1:18080`, so every kubeconfig client uses the tunnel. Protected invocations also replace HTTP proxy environment variables and clear `NO_PROXY`. A different existing `proxy-url` causes an error.
 - If the VPN fails, protected API traffic has no direct fallback. The container uses `NET_ADMIN` and the TUN device, not host networking or Docker's privileged mode.
 - DNS for the API uses `1.1.1.1` through the VPN. API hostnames requiring private DNS are not supported by this initial release.
 
 An existing host VPN can carry the outer OpenVPN connection. Docker forwarding and VPN firewall behavior vary by machine; verify container egress on your system. This tool does not manage the host VPN or enforce that it is connected.
 
-This integration covers ordinary `kubectl`, not independent clients such as IDEs or k9s. Invoking the original kubectl binary directly bypasses the wrapper. Other local processes/users can reach the restricted proxy, but still need Kubernetes credentials. Docker access itself is privileged; install only profiles you trust.
+Independent clients such as k9s, helm, and IDEs reach the API through the kubeconfig `proxy-url`. They do not start the container; if it is stopped, they fail with connection refused instead of connecting directly. Regenerating the kubeconfig drops `proxy-url`; re-run the installer to restore it. Other local processes/users can reach the restricted proxy, but still need Kubernetes credentials. Docker access itself is privileged; install only profiles you trust.
 
 ## Files and reuse
 
@@ -88,6 +88,7 @@ This integration covers ordinary `kubectl`, not independent clients such as IDEs
 | `~/.local/bin/kubectl` | Wrapper executable |
 | `~/.local/bin/kubectl-vpn` | Lifecycle command |
 | `~/.zshrc` | Managed function, with a timestamped backup |
+| kubeconfig | `proxy-url` on the protected cluster |
 
 The repository contains no VPN profiles, credentials, or kubeconfig. Each user supplies their own files locally. Re-run the installer to update the runtime code. After changing profiles, remove the existing managed container with `docker rm -f kubectl-vpn` before reconnecting.
 
@@ -99,7 +100,7 @@ Port `18080` must be available. The image is built locally as `kubectl-vpn:local
 python3 install.py --uninstall
 ```
 
-Open a new terminal afterward. This removes the wrapper integration and managed container. Private configuration is retained for reuse; remove `~/.config/kubectl-vpn` separately to erase it. You may also remove `~/.local/share/kubectl-vpn` and the `kubectl-vpn:local` image.
+Open a new terminal afterward. This removes the wrapper integration, the kubeconfig `proxy-url`, and the managed container. Private configuration is retained for reuse; remove `~/.config/kubectl-vpn` separately to erase it. You may also remove `~/.local/share/kubectl-vpn` and the `kubectl-vpn:local` image.
 
 ## Development and validation
 
