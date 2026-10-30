@@ -49,7 +49,7 @@ def prepare_profile(source):
         elif fields[0] in allowed: result.append(s)
     if block or not remotes: raise ValueError('Profile needs complete inline keys and a public IPv4 remote.')
     result.extend(['dev tun0','nobind','redirect-gateway def1','auth-user-pass /secrets/auth.txt',
-                   'auth-nocache','auth-retry nointeract','connect-retry-max 2','server-poll-timeout 10',
+                   'auth-nocache','auth-retry none','connect-retry-max 2','server-poll-timeout 10',
                    'data-ciphers AES-256-GCM:AES-128-GCM:AES-256-CBC','data-ciphers-fallback AES-256-CBC',
                    'pull-filter ignore "dhcp-option"','pull-filter ignore "route-ipv6"',
                    'pull-filter ignore "ifconfig-ipv6"','verb 3'])

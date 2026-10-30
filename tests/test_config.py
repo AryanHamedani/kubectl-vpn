@@ -16,6 +16,8 @@ class ConfigurationTests(unittest.TestCase):
         self.assertNotIn('/bad', result)
         self.assertNotIn('auth-user-pass old', result)
         self.assertIn('auth-user-pass /secrets/auth.txt', result)
+        # nointeract would resend rejected credentials forever and can lock the account.
+        self.assertIn('auth-retry none', result)
         self.assertEqual(remotes, [['1.1.1.1', 8443]])
     def test_unsupported_profile_fails_explicitly(self):
         with self.assertRaises(ValueError): self.module.prepare_profile('proto tcp-server\nremote 1.1.1.1 443\n')
