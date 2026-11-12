@@ -12,8 +12,8 @@ from urllib.parse import urlparse
 
 CONFIG = Path(os.environ.get('KUBECTL_VPN_HOME', Path.home()/'.config/kubectl-vpn'))
 NAME = 'kubectl-vpn'
-# The proxy core. Bump together with the changelog.
-IMAGE = 'ghcr.io/aryanhamedani/sidetunnel:0.1.0'
+# The proxy core, pinned by digest because a tag can be re-pointed. Bump together with the changelog.
+IMAGE = 'ghcr.io/aryanhamedani/sidetunnel:0.1.0@sha256:d6c306c40edce10958ae8770f908d42127d5d2a078122ad5b50603c4e2a05ff1'
 PORT = 18080
 
 def protected_server(server, hostname):

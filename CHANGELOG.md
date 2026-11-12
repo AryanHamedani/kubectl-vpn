@@ -6,7 +6,7 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Changed
 
-- The container is now [sidetunnel](https://github.com/AryanHamedani/sidetunnel) 0.1.0, pulled from GHCR at a pinned version instead of built locally. The proxy, firewall and profile hardening moved there.
+- The container is now [sidetunnel](https://github.com/AryanHamedani/sidetunnel) 0.1.0, pulled from GHCR, pinned by digest, instead of built locally. The proxy, firewall and profile hardening moved there.
 - Re-running the installer recreates a running container, so new settings apply immediately. `--profile` is optional when a profile is already installed.
 - The profile is stored as given and hardened inside the container at start. Host names in `remote` and `proto tcp` profiles now work.
 

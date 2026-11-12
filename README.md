@@ -104,7 +104,7 @@ Independent clients such as k9s, helm, and IDEs reach the API through the kubeco
 
 The repository contains no VPN profiles, credentials, or kubeconfig. Each user supplies their own files locally. Re-run the installer to update the runtime code, change the profile or change the allowed hosts; it recreates a running container.
 
-Port `18080` must be available. The image is pulled from `ghcr.io/aryanhamedani/sidetunnel` at a version pinned in `vpnctl.py`; an image with that tag already present locally is used as is.
+Port `18080` must be available. The image is pulled from `ghcr.io/aryanhamedani/sidetunnel` at a version and digest pinned in `vpnctl.py`.
 
 ## Uninstall
 
