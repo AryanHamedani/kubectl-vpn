@@ -27,7 +27,11 @@ def update_rc(path, block):
 
 def main():
     parser=argparse.ArgumentParser()
-    parser.add_argument('--profile',type=Path)
+    parser.add_argument('--profile',type=Path,help='OpenVPN profile; optional when one is already installed')
+    parser.add_argument('--allow-host',action='append',metavar='HOST',
+                        help='extra host reachable through the proxy on port 443, e.g. for a browser; repeatable; '
+                             "'*' allows every host; pass '' to clear; default: keep the installed list")
+    parser.add_argument('--dns',help="resolver used inside the tunnel, or 'vpn' for the ones the VPN pushes (default: 1.1.1.1)")
     parser.add_argument('--uninstall',action='store_true')
     args=parser.parse_args()
     home=Path.home()
@@ -47,12 +51,15 @@ def main():
         vpnctl.remove_container()
         print('Shell integration removed. Open a new shell. Private profile and credentials retained in '+str(vpnctl.CONFIG))
         return
-    if not args.profile: parser.error('--profile is required')
+    installed=vpnctl.CONFIG/'client.ovpn'
+    source=args.profile or installed
+    if not source.exists(): parser.error('--profile is required')
     existing=vpnctl.CONFIG/'settings.json'
-    if existing.exists(): real=json.loads(existing.read_text())['kubectl']
-    else:
-        real=shutil.which('kubectl')
-        if not real: raise RuntimeError('Install kubectl first')
+    old=json.loads(existing.read_text()) if existing.exists() else {}
+    real=old.get('kubectl') or shutil.which('kubectl')
+    if not real: raise RuntimeError('Install kubectl first')
+    allowed=[h for h in args.allow_host if h] if args.allow_host is not None else old.get('allowed_hosts',[])
+    dns=(args.dns or old.get('dns','1.1.1.1')) if args.dns!='vpn' else ''
     data=json.loads(subprocess.check_output([real,'config','view','--minify','-o','json']))
     cluster_name=data['clusters'][0]['name']
     cluster=data['clusters'][0]['cluster']
@@ -60,16 +67,22 @@ def main():
     if parsed.scheme!='https' or (parsed.port or 443)!=443: raise RuntimeError('Expected an HTTPS Kubernetes API on port 443')
     proxy_url=f'http://127.0.0.1:{vpnctl.PORT}'
     if cluster.get('proxy-url') not in (None,proxy_url): raise RuntimeError('Remove existing protected cluster proxy-url before installing')
-    profile,remotes=vpnctl.prepare_profile(args.profile.read_text())
     for name in ['kubectl','kubectl-vpn']:
         p=bindir/name
         if p.exists() and 'kubectl-vpn' not in p.read_text():
             raise RuntimeError(f'Refusing to replace existing {p}')
-    subprocess.run(['docker','build','-t',vpnctl.IMAGE,str(ROOT/'container')],check=True)
+    if subprocess.run(['docker','image','inspect',vpnctl.IMAGE],capture_output=True).returncode:
+        subprocess.run(['docker','pull',vpnctl.IMAGE],check=True)
+    # The image hardens the profile at start; reject an unusable one now instead of in a restart loop.
+    subprocess.run(['docker','run','--rm','--mount',f'type=bind,src={source.resolve()},dst=/config/client.ovpn,readonly',
+                    '--entrypoint','python3',vpnctl.IMAGE,'/app/ovpn.py'],check=True)
+    profile=source.read_text()
+    running=vpnctl.managed_container() is not None
     vpnctl.CONFIG.mkdir(mode=0o700,parents=True,exist_ok=True)
     vpnctl.CONFIG.chmod(0o700)
-    for name,content in [('client.ovpn',profile),('remotes.json',json.dumps(remotes)),
-                         ('settings.json',json.dumps({'hostname':parsed.hostname,'kubectl':real,'cluster':cluster_name},indent=2))]:
+    for name,content in [('client.ovpn',profile),
+                         ('settings.json',json.dumps({'hostname':parsed.hostname,'kubectl':real,'cluster':cluster_name,
+                                                      'allowed_hosts':allowed,'dns':dns},indent=2))]:
         p=vpnctl.CONFIG/name
         fd=os.open(p,os.O_WRONLY|os.O_CREAT|os.O_TRUNC,0o600)
         os.fchmod(fd,0o600)
@@ -86,6 +99,10 @@ def main():
     update_rc(rc,'# A function takes precedence over mise activation and existing PATH order.\n'
               'unalias kubectl 2>/dev/null || true\n'
               'kubectl() { '+shlex.quote(str(bindir/'kubectl'))+' "$@"; }')
+    if running:
+        # Settings only apply to a new container; clients see connection refused for a few seconds.
+        vpnctl.remove_container()
+        vpnctl.start()
     print('Installed. Open a new terminal, then run kubectl get namespaces.')
     print('The first protected API command prompts locally for VPN credentials.')
     print('To authenticate explicitly: '+str(bindir/'kubectl-vpn')+' login')

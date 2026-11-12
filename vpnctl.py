@@ -2,12 +2,9 @@
 """Local lifecycle manager and transparent kubectl launcher."""
 import fcntl
 import getpass
-import ipaddress
 import json
 import os
 from pathlib import Path
-import shlex
-import shutil
 import subprocess
 import sys
 import time
@@ -15,45 +12,9 @@ from urllib.parse import urlparse
 
 CONFIG = Path(os.environ.get('KUBECTL_VPN_HOME', Path.home()/'.config/kubectl-vpn'))
 NAME = 'kubectl-vpn'
-IMAGE = 'kubectl-vpn:local'
+# The proxy core. Bump together with the changelog.
+IMAGE = 'ghcr.io/aryanhamedani/sidetunnel:0.1.0'
 PORT = 18080
-
-def prepare_profile(source):
-    result, remotes, block = [], [], None
-    allowed = {'client','proto','persist-key','persist-tun','tls-client','remote-cert-tls',
-               'auth','cipher','key-direction','tls-version-min','tls-cipher','remote-random'}
-    for line in source.splitlines():
-        s = line.strip()
-        if block:
-            result.append(line)
-            if s == f'</{block}>': block = None
-            continue
-        if s.startswith('<'):
-            tag = s[1:-1]
-            if tag not in {'ca','cert','key','tls-auth','tls-crypt'}:
-                raise ValueError(f'Unsupported inline block: {tag}')
-            block = tag
-            result.append(line)
-            continue
-        if not s or s.startswith(('#',';')): continue
-        fields = shlex.split(s)
-        if fields[0] == 'proto' and fields[1] not in {'udp', 'tcp-client'}:
-            raise ValueError('This setup supports UDP or TCP-client OpenVPN profiles only.')
-        if fields[0] == 'remote':
-            addr = ipaddress.IPv4Address(fields[1])
-            if not addr.is_global: continue
-            port = int(fields[2]) if len(fields)>2 else 1194
-            if not 1 <= port <= 65535: raise ValueError('Invalid remote port')
-            remotes.append([str(addr), port])
-            result.append(f'remote {addr} {port}')
-        elif fields[0] in allowed: result.append(s)
-    if block or not remotes: raise ValueError('Profile needs complete inline keys and a public IPv4 remote.')
-    result.extend(['dev tun0','nobind','redirect-gateway def1','auth-user-pass /secrets/auth.txt',
-                   'auth-nocache','auth-retry none','connect-retry-max 2','server-poll-timeout 10',
-                   'data-ciphers AES-256-GCM:AES-128-GCM:AES-256-CBC','data-ciphers-fallback AES-256-CBC',
-                   'pull-filter ignore "dhcp-option"','pull-filter ignore "route-ipv6"',
-                   'pull-filter ignore "ifconfig-ipv6"','verb 3'])
-    return '\n'.join(result)+'\n', remotes
 
 def protected_server(server, hostname):
     u = urlparse(server)
@@ -96,27 +57,30 @@ def managed_container():
 def remove_container():
     if managed_container(): run(['docker','rm','-f',NAME],stdout=subprocess.DEVNULL)
 
+def run_command(cfg):
+    command=['docker','run','-d','--name',NAME,'--restart','unless-stopped','--label','kubectl-vpn.managed=true',
+             '--cap-add=NET_ADMIN','--device=/dev/net/tun','--sysctl=net.ipv6.conf.all.disable_ipv6=1',
+             '--publish',f'127.0.0.1:{PORT}:8080','--mount',f'type=bind,src={CONFIG},dst=/config,readonly',
+             '--env','ALLOWED_HOSTS='+','.join([cfg['hostname'],*cfg.get('allowed_hosts',[])]),'--env','ALLOWED_PORTS=443',
+             '--read-only','--tmpfs','/tmp','--log-opt','max-size=2m','--log-opt','max-file=2']
+    # Without this the core uses the resolvers pushed by the VPN.
+    if cfg.get('dns'): command+=['--env','DNS_SERVERS='+cfg['dns']]
+    return [*command,IMAGE]
+
 def start():
     cfg = settings()
     if not (CONFIG/'auth.txt').exists(): credentials()
     with (CONFIG/'start.lock').open('w') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
         obj = managed_container()
-        if obj is None:
-            run(['docker','run','-d','--name',NAME,'--restart','unless-stopped','--label','kubectl-vpn.managed=true',
-                 '--cap-add=NET_ADMIN','--device=/dev/net/tun','--sysctl=net.ipv6.conf.all.disable_ipv6=1',
-                 '--dns=1.1.1.1','--publish',f'127.0.0.1:{PORT}:8080',
-                 '--mount',f'type=bind,src={CONFIG},dst=/secrets,readonly',
-                 '--env',f'API_HOST={cfg["hostname"]}', '--read-only','--tmpfs','/tmp',
-                 '--log-opt','max-size=2m','--log-opt','max-file=2',IMAGE], stdout=subprocess.DEVNULL)
-        else:
-            if not obj['State']['Running']: run(['docker','start',NAME], stdout=subprocess.DEVNULL)
+        if obj is None: run(run_command(cfg), stdout=subprocess.DEVNULL)
+        elif not obj['State']['Running']: run(['docker','start',NAME], stdout=subprocess.DEVNULL)
         print('Waiting for VPN…', file=sys.stderr)
         for _ in range(60):
-            state = subprocess.run(['docker','exec',NAME,'test','-f','/tmp/vpn-ready'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
-            if state.returncode == 0: return
-            rejected = subprocess.run(['docker','exec',NAME,'test','-f','/tmp/auth-failed'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
-            if rejected.returncode == 0: raise RuntimeError('VPN rejected the saved credentials. Run kubectl-vpn login.')
+            # The image's status command exits 0 when ready and 2 when the VPN rejected the credentials.
+            state = subprocess.run(['docker','exec',NAME,'status'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL).returncode
+            if state == 0: return
+            if state == 2: raise RuntimeError('VPN rejected the saved credentials. Run kubectl-vpn login.')
             time.sleep(1)
         raise RuntimeError('VPN did not connect in 60 seconds. Run kubectl-vpn logs. No direct Kubernetes fallback was used.')
 

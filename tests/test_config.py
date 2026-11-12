@@ -8,24 +8,14 @@ class ConfigurationTests(unittest.TestCase):
         spec = importlib.util.spec_from_file_location('vpnctl', ROOT / 'vpnctl.py')
         self.module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(self.module)
-    def test_profile_keeps_keys_but_removes_host_scripts_and_private_remote(self):
-        profile = 'client\nremote 10.0.0.1 1194\nremote 1.1.1.1 8443\nproto udp\nup /bad\nauth-user-pass old\n<key>\nSECRET\n</key>\n'
-        result, remotes = self.module.prepare_profile(profile)
-        self.assertIn('<key>\nSECRET\n</key>', result)
-        self.assertNotIn('10.0.0.1', result)
-        self.assertNotIn('/bad', result)
-        self.assertNotIn('auth-user-pass old', result)
-        self.assertIn('auth-user-pass /secrets/auth.txt', result)
-        # nointeract would resend rejected credentials forever and can lock the account.
-        self.assertIn('auth-retry none', result)
-        self.assertEqual(remotes, [['1.1.1.1', 8443]])
-    def test_unsupported_profile_fails_explicitly(self):
-        with self.assertRaises(ValueError): self.module.prepare_profile('proto tcp-server\nremote 1.1.1.1 443\n')
-    def test_tcp_client_profile_is_supported(self):
-        result,remotes=self.module.prepare_profile('client\nproto tcp-client\nremote 1.1.1.1 443\n')
-        self.assertIn('proto tcp-client',result)
-        self.assertEqual(remotes,[['1.1.1.1',443]])
-
+    def test_container_allows_only_the_api_and_listed_hosts_on_443(self):
+        command=self.module.run_command({'hostname':'api.example','allowed_hosts':['site.example']})
+        self.assertIn('ALLOWED_HOSTS=api.example,site.example',command)
+        self.assertIn('ALLOWED_PORTS=443',command)
+        self.assertIn(f'127.0.0.1:{self.module.PORT}:8080',command)
+        self.assertFalse(any(item.startswith('DNS_SERVERS') for item in command))
+        self.assertIn('ALLOWED_HOSTS=api.example',self.module.run_command({'hostname':'api.example','dns':'1.1.1.1'}))
+        self.assertIn('DNS_SERVERS=1.1.1.1',self.module.run_command({'hostname':'api.example','dns':'1.1.1.1'}))
     def test_cluster_match_is_exact(self):
         self.assertTrue(self.module.protected_server('https://api.example:443', 'api.example'))
         self.assertFalse(self.module.protected_server('https://api.example.evil', 'api.example'))
